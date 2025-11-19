@@ -48,10 +48,10 @@ def get_best_model():
     
     return 'gemini-1.5-flash' # Absolute fallback
 
-def generate_quiz_from_pdf(file_path: str, num_questions: int = 5):
-    print(f"--- Processing: {file_path} ---")
+# Update the function signature to accept 'topic'
+def generate_quiz_from_pdf(file_path: str, num_questions: int = 5, topic: str = ""):
+    print(f"--- Processing: {file_path} | Topic: {topic} ---")
     
-    # A. Read PDF (First 5 pages only to save speed)
     try:
         reader = PdfReader(file_path)
         text = ""
@@ -61,17 +61,20 @@ def generate_quiz_from_pdf(file_path: str, num_questions: int = 5):
         print(f"❌ Error reading PDF: {e}")
         return None
 
-    # B. Get the Auto-Selected Model
     model_name = get_best_model()
     model = genai.GenerativeModel(model_name)
 
-    # C. Prompt
+    # Dynamic Prompting based on user input
+    topic_instruction = ""
+    if topic and topic.strip() != "":
+        topic_instruction = f"FOCUS EXCLUSIVELY on the topic: '{topic}'. Do not ask questions about anything else."
+
     prompt = f"""
     You are a teacher. Create {num_questions} multiple choice questions from the text below.
+    {topic_instruction}
     
     STRICT OUTPUT FORMAT:
-    Return ONLY valid JSON. No markdown (```json). No text before or after.
-    
+    Return ONLY valid JSON. No markdown.
     {{
         "topic": "Overall Topic",
         "questions": [
@@ -88,20 +91,13 @@ def generate_quiz_from_pdf(file_path: str, num_questions: int = 5):
     {text}
     """
 
-    # D. Generate
     print(f"⏳ Generating with {model_name}...")
     try:
         response = model.generate_content(prompt)
-        
-        # Clean up JSON (Remove ```json if AI adds it)
         clean_text = response.text.strip()
-        if clean_text.startswith("```json"):
-            clean_text = clean_text[7:]
-        if clean_text.endswith("```"):
-            clean_text = clean_text[:-3]
-            
+        if clean_text.startswith("```json"): clean_text = clean_text[7:]
+        if clean_text.endswith("```"): clean_text = clean_text[:-3]
         return json.loads(clean_text)
-
     except Exception as e:
         print(f"❌ Generation Error: {e}")
         return None

@@ -1,6 +1,6 @@
 import os
 import shutil
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from core_engine import generate_quiz_from_pdf
 
@@ -15,23 +15,24 @@ app.add_middleware(
 )
 
 @app.post("/generate-quiz")
-async def generate_quiz_endpoint(file: UploadFile = File(...), num_questions: int = 5):
-    # 1. Validate PDF
+async def generate_quiz_endpoint(
+    file: UploadFile = File(...), 
+    num_questions: int = Form(5), 
+    topic: str = Form("")  # New optional field
+):
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="File must be a PDF")
     
-    # 2. Save file temporarily
     temp_filename = f"temp_{file.filename}"
     with open(temp_filename, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
         
     try:
-        # 3. Generate Quiz
-        response = generate_quiz_from_pdf(temp_filename, num_questions)
+        # Pass the new arguments to the core engine
+        response = generate_quiz_from_pdf(temp_filename, num_questions, topic)
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        # 4. Cleanup
         if os.path.exists(temp_filename):
             os.remove(temp_filename)
