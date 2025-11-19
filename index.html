@@ -3,21 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QuizGen AI - Study Assistant</title>
+    <title>QuizGen AI 2.0</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; }
         .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        h1 { color: #2c3e50; text-align: center; }
-        .upload-section { border: 2px dashed #3498db; padding: 30px; text-align: center; border-radius: 8px; background: #f0f8ff; cursor: pointer; transition: 0.3s; }
-        .upload-section:hover { background: #e1f0ff; border-color: #2980b9; }
-        input[type="file"] { display: none; }
-        .btn { background: #3498db; color: white; padding: 12px 24px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; margin-top: 15px; }
-        .btn:disabled { background: #bdc3c7; cursor: not-allowed; }
-        .loader { display: none; text-align: center; margin-top: 20px; font-weight: bold; color: #555; }
+        h1 { color: #2c3e50; text-align: center; margin-bottom: 5px; }
+        .subtitle { text-align: center; color: #7f8c8d; margin-bottom: 30px; }
         
-        /* Quiz Styles */
+        /* Controls Section */
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+        .input-group { display: flex; flex-direction: column; }
+        label { font-weight: bold; color: #34495e; margin-bottom: 5px; }
+        input, select { padding: 10px; border: 1px solid #bdc3c7; border-radius: 6px; font-size: 16px; }
+        
+        /* Upload Box */
+        .upload-section { border: 2px dashed #3498db; padding: 30px; text-align: center; border-radius: 8px; background: #f0f8ff; cursor: pointer; transition: 0.3s; margin-bottom: 20px; }
+        .upload-section:hover { background: #e1f0ff; border-color: #2980b9; }
+        
+        /* Buttons */
+        .btn { background: #3498db; color: white; padding: 12px 24px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; width: 100%; transition: 0.2s; }
+        .btn:hover { background: #2980b9; }
+        .btn:disabled { background: #95a5a6; cursor: not-allowed; }
+        
+        /* Loading Bar */
+        .progress-container { display: none; margin-top: 20px; }
+        .progress-bar-bg { background: #ecf0f1; border-radius: 10px; height: 10px; width: 100%; overflow: hidden; }
+        .progress-bar-fill { background: #2ecc71; height: 100%; width: 0%; transition: width 0.5s; }
+        .loading-text { text-align: center; margin-top: 8px; font-size: 14px; color: #7f8c8d; }
+
+        /* Quiz Area */
         #quiz-container { margin-top: 30px; display: none; }
-        .question-card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 20px; border-left: 5px solid #3498db; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .download-btn { background: #27ae60; padding: 8px 15px; font-size: 14px; width: auto; }
+        .download-btn:hover { background: #219150; }
+
+        .question-card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 20px; border-left: 5px solid #3498db; page-break-inside: avoid; }
         .question-text { font-weight: bold; font-size: 18px; margin-bottom: 15px; }
         .option { display: block; padding: 10px; margin: 5px 0; background: #f9f9f9; border-radius: 4px; cursor: pointer; border: 1px solid #eee; }
         .option:hover { background: #eee; }
@@ -29,73 +50,124 @@
 <body>
 
 <div class="container">
-    <h1>🎓 QuizGen AI</h1>
-    <p style="text-align: center; color: #7f8c8d;">Upload your notes (PDF) and generate a quiz instantly.</p>
+    <h1>🎓 QuizGen AI 2.0</h1>
+    <p class="subtitle">Upload notes, pick a topic, and generate a study quiz.</p>
+
+    <div class="controls">
+        <div class="input-group">
+            <label>🎯 Specific Topic (Optional)</label>
+            <input type="text" id="topicInput" placeholder="e.g., Dates, Formulas, Chapter 1">
+        </div>
+        <div class="input-group">
+            <label>🔢 Number of Questions</label>
+            <select id="numQuestions">
+                <option value="3">3 Questions</option>
+                <option value="5" selected>5 Questions</option>
+                <option value="10">10 Questions</option>
+                <option value="15">15 Questions</option>
+            </select>
+        </div>
+    </div>
 
     <div class="upload-section" onclick="document.getElementById('pdfFile').click()">
-        <p>📂 Click to Upload PDF</p>
-        <input type="file" id="pdfFile" accept=".pdf">
-        <span id="fileName" style="display:block; margin-top:10px; color:#555;"></span>
-    </div>
-    <div style="text-align: center;">
-        <button class="btn" onclick="generateQuiz()" id="generateBtn">Generate Quiz 🚀</button>
+        <p>📂 Click here to Upload PDF</p>
+        <input type="file" id="pdfFile" accept=".pdf" style="display: none;">
+        <span id="fileName" style="display:block; margin-top:10px; color:#555; font-weight: bold;"></span>
     </div>
 
-    <div class="loader" id="loader">
-        ⏳ Analyzing your notes... <br> (This creates the quiz using Gemini AI)
+    <button class="btn" onclick="generateQuiz()" id="generateBtn">Generate Quiz 🚀</button>
+
+    <div class="progress-container" id="progressBox">
+        <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="progressBar"></div>
+        </div>
+        <div class="loading-text" id="loadingText">Initializing AI...</div>
     </div>
 
     <div id="quiz-container">
-        <h2 id="topic-title">Topic: </h2>
+        <div class="header-row">
+            <h2 id="topic-title" style="margin:0;">Results</h2>
+            <button class="btn download-btn" onclick="downloadPDF()">📥 Download PDF</button>
+        </div>
         <div id="questions-list"></div>
     </div>
 </div>
 
 <script>
-    // Show filename when selected
+    // --- CONFIGURATION ---
+    // I have set this to your BASE URL. The code below automatically adds '/generate-quiz'
+    const API_URL = "https://quiz-gen-backend-8h3k.onrender.com"; 
+
+    // File selection UI logic
     document.getElementById('pdfFile').addEventListener('change', function() {
         if(this.files[0]) document.getElementById('fileName').textContent = "Selected: " + this.files[0].name;
     });
 
     async function generateQuiz() {
         const fileInput = document.getElementById('pdfFile');
+        const topic = document.getElementById('topicInput').value;
+        const numQ = document.getElementById('numQuestions').value;
+
         if (!fileInput.files[0]) { alert("Please select a PDF first!"); return; }
 
         // UI Updates
         document.getElementById('generateBtn').disabled = true;
-        document.getElementById('loader').style.display = 'block';
         document.getElementById('quiz-container').style.display = 'none';
+        document.getElementById('progressBox').style.display = 'block';
+        
+        // Fake Loading Animation (Visual only)
+        let width = 0;
+        const progressBar = document.getElementById('progressBar');
+        const loadingText = document.getElementById('loadingText');
+        const interval = setInterval(() => {
+            if (width >= 90) { 
+                // Pause at 90% until real data arrives
+                loadingText.textContent = "Finalizing quiz...";
+            } else {
+                width++; 
+                progressBar.style.width = width + '%';
+            }
+        }, 50); 
 
         // Prepare Data
         const formData = new FormData();
         formData.append("file", fileInput.files[0]);
-        formData.append("num_questions", 5);
+        formData.append("num_questions", numQ);
+        formData.append("topic", topic);
 
         try {
-            // Call your Python API
-            const response = await fetch("https://quiz-gen-backend-8h3k.onrender.com/generate-quiz", {
+            const response = await fetch(`${API_URL}/generate-quiz`, {
                 method: "POST",
                 body: formData
             });
 
-            if (!response.ok) throw new Error("Server Error");
+            if (!response.ok) throw new Error("Server Error: " + response.statusText);
 
             const data = await response.json();
-            displayQuiz(data);
+            
+            // Complete Bar
+            clearInterval(interval);
+            progressBar.style.width = '100%';
+            loadingText.textContent = "Done!";
+            
+            setTimeout(() => {
+                document.getElementById('progressBox').style.display = 'none';
+                displayQuiz(data);
+            }, 500);
 
         } catch (error) {
-            alert("Error generating quiz. Check console.");
-            console.error(error);
+            clearInterval(interval);
+            alert("Error: " + error.message);
+            document.getElementById('progressBox').style.display = 'none';
         } finally {
             document.getElementById('generateBtn').disabled = false;
-            document.getElementById('loader').style.display = 'none';
         }
     }
 
     function displayQuiz(data) {
         const container = document.getElementById('questions-list');
         container.innerHTML = "";
-        document.getElementById('topic-title').textContent = "Topic: " + (data.topic || "Generated Quiz");
+        document.getElementById('topic-title').textContent = data.topic || "Generated Quiz";
         document.getElementById('quiz-container').style.display = 'block';
 
         data.questions.forEach((q, index) => {
@@ -118,19 +190,31 @@
 
     function checkAnswer(element, correct) {
         const allOptions = element.parentElement.children;
-        for (let opt of allOptions) opt.style.pointerEvents = "none"; // Disable further clicks
+        for (let opt of allOptions) opt.style.pointerEvents = "none";
 
         if (element.innerText.trim() === correct.trim()) {
             element.classList.add("correct");
         } else {
             element.classList.add("wrong");
-            // Highlight correct one
             for (let opt of allOptions) {
                 if (opt.innerText.trim() === correct.trim()) opt.classList.add("correct");
             }
         }
-        // Show explanation
         element.parentElement.nextElementSibling.style.display = "block";
+    }
+
+    function downloadPDF() {
+        const element = document.getElementById('questions-list');
+        // Options for the PDF generation
+        const opt = {
+            margin:       10,
+            filename:     'Study_Quiz.pdf',
+            image:        { type: 'jpeg', quality: 0.98 },
+            html2canvas:  { scale: 2 },
+            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+        // Generate PDF
+        html2pdf().set(opt).from(element).save();
     }
 </script>
 
