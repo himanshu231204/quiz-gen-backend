@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuizGen AI - Study Assistant</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; text-align: center; }
+        .upload-section { border: 2px dashed #3498db; padding: 30px; text-align: center; border-radius: 8px; background: #f0f8ff; cursor: pointer; transition: 0.3s; }
+        .upload-section:hover { background: #e1f0ff; border-color: #2980b9; }
+        input[type="file"] { display: none; }
+        .btn { background: #3498db; color: white; padding: 12px 24px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; margin-top: 15px; }
+        .btn:disabled { background: #bdc3c7; cursor: not-allowed; }
+        .loader { display: none; text-align: center; margin-top: 20px; font-weight: bold; color: #555; }
+        
+        /* Quiz Styles */
+        #quiz-container { margin-top: 30px; display: none; }
+        .question-card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 20px; border-left: 5px solid #3498db; }
+        .question-text { font-weight: bold; font-size: 18px; margin-bottom: 15px; }
+        .option { display: block; padding: 10px; margin: 5px 0; background: #f9f9f9; border-radius: 4px; cursor: pointer; border: 1px solid #eee; }
+        .option:hover { background: #eee; }
+        .correct { background-color: #d4edda !important; border-color: #c3e6cb !important; color: #155724; }
+        .wrong { background-color: #f8d7da !important; border-color: #f5c6cb !important; color: #721c24; }
+        .hidden-answer { display: none; margin-top: 10px; color: #27ae60; font-weight: bold; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🎓 QuizGen AI</h1>
+    <p style="text-align: center; color: #7f8c8d;">Upload your notes (PDF) and generate a quiz instantly.</p>
+
+    <div class="upload-section" onclick="document.getElementById('pdfFile').click()">
+        <p>📂 Click to Upload PDF</p>
+        <input type="file" id="pdfFile" accept=".pdf">
+        <span id="fileName" style="display:block; margin-top:10px; color:#555;"></span>
+    </div>
+    <div style="text-align: center;">
+        <button class="btn" onclick="generateQuiz()" id="generateBtn">Generate Quiz 🚀</button>
+    </div>
+
+    <div class="loader" id="loader">
+        ⏳ Analyzing your notes... <br> (This creates the quiz using Gemini AI)
+    </div>
+
+    <div id="quiz-container">
+        <h2 id="topic-title">Topic: </h2>
+        <div id="questions-list"></div>
+    </div>
+</div>
+
+<script>
+    // Show filename when selected
+    document.getElementById('pdfFile').addEventListener('change', function() {
+        if(this.files[0]) document.getElementById('fileName').textContent = "Selected: " + this.files[0].name;
+    });
+
+    async function generateQuiz() {
+        const fileInput = document.getElementById('pdfFile');
+        if (!fileInput.files[0]) { alert("Please select a PDF first!"); return; }
+
+        // UI Updates
+        document.getElementById('generateBtn').disabled = true;
+        document.getElementById('loader').style.display = 'block';
+        document.getElementById('quiz-container').style.display = 'none';
+
+        // Prepare Data
+        const formData = new FormData();
+        formData.append("file", fileInput.files[0]);
+        formData.append("num_questions", 5);
+
+        try {
+            // Call your Python API
+            const response = await fetch("http://127.0.0.1:8000/generate-quiz", {
+                method: "POST",
+                body: formData
+            });
+
+            if (!response.ok) throw new Error("Server Error");
+
+            const data = await response.json();
+            displayQuiz(data);
+
+        } catch (error) {
+            alert("Error generating quiz. Check console.");
+            console.error(error);
+        } finally {
+            document.getElementById('generateBtn').disabled = false;
+            document.getElementById('loader').style.display = 'none';
+        }
+    }
+
+    function displayQuiz(data) {
+        const container = document.getElementById('questions-list');
+        container.innerHTML = "";
+        document.getElementById('topic-title').textContent = "Topic: " + (data.topic || "Generated Quiz");
+        document.getElementById('quiz-container').style.display = 'block';
+
+        data.questions.forEach((q, index) => {
+            const card = document.createElement('div');
+            card.className = 'question-card';
+            
+            let optionsHtml = "";
+            q.options.forEach(opt => {
+                optionsHtml += `<div class="option" onclick="checkAnswer(this, '${q.correct_answer.replace(/'/g, "\\'")}')">${opt}</div>`;
+            });
+
+            card.innerHTML = `
+                <div class="question-text">Q${index + 1}: ${q.question}</div>
+                <div class="options-list">${optionsHtml}</div>
+                <div class="hidden-answer">✅ Answer: ${q.correct_answer} <br> <small>💡 ${q.explanation}</small></div>
+            `;
+            container.appendChild(card);
+        });
+    }
+
+    function checkAnswer(element, correct) {
+        const allOptions = element.parentElement.children;
+        for (let opt of allOptions) opt.style.pointerEvents = "none"; // Disable further clicks
+
+        if (element.innerText.trim() === correct.trim()) {
+            element.classList.add("correct");
+        } else {
+            element.classList.add("wrong");
+            // Highlight correct one
+            for (let opt of allOptions) {
+                if (opt.innerText.trim() === correct.trim()) opt.classList.add("correct");
+            }
+        }
+        // Show explanation
+        element.parentElement.nextElementSibling.style.display = "block";
+    }
+</script>
+
+</body>
+</html>
