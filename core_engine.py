@@ -11,7 +11,6 @@ genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 def get_best_model():
     """
     Automatically finds the best available model for your key.
-    Prioritizes: Flash -> Pro -> 2.0 -> 1.5 -> 1.0
     """
     print("🔍 Scanning for available models...")
     available_models = []
@@ -21,10 +20,9 @@ def get_best_model():
                 available_models.append(m.name)
     except Exception as e:
         print(f"⚠️ Could not list models: {e}")
-        # Fallback if listing fails
         return 'gemini-1.5-flash'
 
-    # Priority List (The "Best" models to use)
+    # Priority List
     priorities = [
         'gemini-1.5-flash', 
         'gemini-1.5-flash-latest', 
@@ -33,91 +31,125 @@ def get_best_model():
         'gemini-pro'
     ]
 
-    # Check if any priority model exists in your available list
     for p in priorities:
-        # We check if the priority name is inside any available model name (e.g. "models/gemini-1.5-flash")
         for available in available_models:
             if p in available:
                 print(f"✅ Auto-Selected Model: {available}")
                 return available
     
-    # If nothing matches, just take the first available one
     if available_models:
-        print(f"⚠️ No preferred model found. Using: {available_models[0]}")
         return available_models[0]
     
-    return 'gemini-1.5-flash' # Absolute fallback
+    return 'gemini-1.5-flash'
 
-# Update the function signature to accept 'topic'
+def clean_json_response(text):
+    """
+    Helper to strip markdown and ensure clean JSON string
+    """
+    clean_text = text.strip()
+    if clean_text.startswith("```json"):
+        clean_text = clean_text[7:]
+    if clean_text.endswith("```"):
+        clean_text = clean_text[:-3]
+    return clean_text
+
 def generate_quiz_from_pdf(file_path: str, num_questions: int = 5, topic: str = ""):
     print(f"--- Processing: {file_path} | Target: {num_questions} Questions | Topic: {topic} ---")
     
+    # 1. Extract Text
     try:
         reader = PdfReader(file_path)
         text = ""
-        # Read more pages (up to 10) to ensure we have enough content for 15 questions
-        for page in reader.pages[:10]:
+        # Read up to 20 pages to ensure we have enough content for 15+ questions
+        for page in reader.pages[:20]:
             text += page.extract_text() + "\n"
     except Exception as e:
         print(f"❌ Error reading PDF: {e}")
         return None
 
+    # 2. Setup AI
     model_name = get_best_model()
     model = genai.GenerativeModel(model_name)
 
-    # Build a stronger prompt
-    topic_instruction = ""
-    if topic and topic.strip() != "":
-        topic_instruction = f"FOCUS EXCLUSIVELY on the topic: '{topic}'."
-
-    prompt = f"""
-    You are a strict teacher. Create EXACTLY {num_questions} multiple choice questions based on the text below.
+    # 3. THE PAGINATION LOOP (The Fix)
+    # We keep asking until we reach the target number
+    all_questions = []
+    attempts = 0
+    max_attempts = 5  # Safety break
     
-    CRITICAL INSTRUCTIONS:
-    1. You MUST generate {num_questions} questions. Do not stop at 5.
-    2. {topic_instruction}
-    3. Return ONLY valid JSON. No markdown.
+    while len(all_questions) < num_questions and attempts < max_attempts:
+        needed = num_questions - len(all_questions)
+        print(f"🔄 Batch {attempts+1}: Generating {needed} more questions...")
+
+        topic_instruction = ""
+        if topic and topic.strip() != "":
+            topic_instruction = f"Focus on the topic: '{topic}'."
+
+        prompt = f"""
+        You are a teacher. Create {needed} multiple choice questions based on the text.
+        
+        CONTEXT:
+        - We need a TOTAL of {num_questions} questions.
+        - We currently have {len(all_questions)} questions.
+        - You must generate exactly {needed} NEW questions now.
+        - {topic_instruction}
+        
+        IMPORTANT:
+        - Return ONLY valid JSON.
+        - Do not repeat questions we already have.
+        
+        JSON Structure:
+        {{
+            "questions": [
+                {{
+                    "question": "Question text?",
+                    "options": ["A", "B", "C", "D"],
+                    "correct_answer": "Correct Option",
+                    "explanation": "Brief explanation"
+                }}
+            ]
+        }}
+
+        TEXT CONTENT:
+        {text[:20000]} 
+        """
+
+        try:
+            response = model.generate_content(prompt)
+            clean_text = clean_json_response(response.text)
+            data = json.loads(clean_text)
+            
+            batch = data.get("questions", [])
+            
+            # Add valid questions to our main list
+            if batch:
+                all_questions.extend(batch)
+                print(f"✅ Got {len(batch)} questions. Total so far: {len(all_questions)}")
+            else:
+                print("⚠️ AI returned empty batch.")
+                
+            attempts += 1
+
+        except Exception as e:
+            print(f"⚠️ Error in batch generation: {e}")
+            attempts += 1
+
+    # 4. Final Polish
+    # Trim list if we got too many (e.g. 16 instead of 15)
+    final_questions = all_questions[:num_questions]
     
-    JSON Structure:
-    {{
-        "topic": "Overall Topic",
-        "questions": [
-            {{
-                "question": "Question text?",
-                "options": ["Option A", "Option B", "Option C", "Option D"],
-                "correct_answer": "Correct Option Text",
-                "explanation": "Brief explanation"
-            }}
-        ]
-    }}
+    print(f"🎉 Final Count: {len(final_questions)} Questions")
 
-    TEXT CONTENT:
-    {text}
-    """
-
-    print(f"⏳ Generating {num_questions} questions with {model_name}...")
-    try:
-        response = model.generate_content(prompt)
-        clean_text = response.text.strip()
-        # Clean up markdown if present
-        if clean_text.startswith("```json"): clean_text = clean_text[7:]
-        if clean_text.endswith("```"): clean_text = clean_text[:-3]
-        
-        data = json.loads(clean_text)
-        
-        # Double check the count
-        actual_count = len(data.get('questions', []))
-        print(f"✅ AI Generated {actual_count} questions.")
-        
-        return data
-    except Exception as e:
-        print(f"❌ Generation Error: {e}")
-        return None
+    return {
+        "topic": topic if topic else "Generated Quiz",
+        "questions": final_questions
+    }
 
 # --- TEST ---
 if __name__ == "__main__":
     if os.path.exists("sample_notes.pdf"):
-        result = generate_quiz_from_pdf("sample_notes.pdf")
+        result = generate_quiz_from_pdf("sample_notes.pdf", num_questions=15)
         if result:
-            print(f"\n✅ SUCCESS! Topic: {result.get('topic', 'Unknown')}")
-            print(f"   First Question: {result['questions'][0]['question']}")
+            print(f"\n✅ SUCCESS! Generated {len(result['questions'])} questions.")
+            for i, q in enumerate(result['questions']):
+                print(f"{i+1}. {q['question']}")
