@@ -113,7 +113,7 @@ Once the server is running, you can access the automatic Swagger UI documentatio
 
 **Himanshu Kumar**
 
-  * **GitHub:** [himanshu231204](https://www.google.com/search?q=https://github.com/himanshu231204)
+  * **GitHub:** [himanshu231204](https://github.com/himanshu231204)
   * **Role:** Full Stack AI Engineer
 
 -----
