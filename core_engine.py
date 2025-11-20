@@ -50,12 +50,13 @@ def get_best_model():
 
 # Update the function signature to accept 'topic'
 def generate_quiz_from_pdf(file_path: str, num_questions: int = 5, topic: str = ""):
-    print(f"--- Processing: {file_path} | Topic: {topic} ---")
+    print(f"--- Processing: {file_path} | Target: {num_questions} Questions | Topic: {topic} ---")
     
     try:
         reader = PdfReader(file_path)
         text = ""
-        for page in reader.pages[:5]:
+        # Read more pages (up to 10) to ensure we have enough content for 15 questions
+        for page in reader.pages[:10]:
             text += page.extract_text() + "\n"
     except Exception as e:
         print(f"❌ Error reading PDF: {e}")
@@ -64,17 +65,20 @@ def generate_quiz_from_pdf(file_path: str, num_questions: int = 5, topic: str = 
     model_name = get_best_model()
     model = genai.GenerativeModel(model_name)
 
-    # Dynamic Prompting based on user input
+    # Build a stronger prompt
     topic_instruction = ""
     if topic and topic.strip() != "":
-        topic_instruction = f"FOCUS EXCLUSIVELY on the topic: '{topic}'. Do not ask questions about anything else."
+        topic_instruction = f"FOCUS EXCLUSIVELY on the topic: '{topic}'."
 
     prompt = f"""
-    You are a teacher. Create {num_questions} multiple choice questions from the text below.
-    {topic_instruction}
+    You are a strict teacher. Create EXACTLY {num_questions} multiple choice questions based on the text below.
     
-    STRICT OUTPUT FORMAT:
-    Return ONLY valid JSON. No markdown.
+    CRITICAL INSTRUCTIONS:
+    1. You MUST generate {num_questions} questions. Do not stop at 5.
+    2. {topic_instruction}
+    3. Return ONLY valid JSON. No markdown.
+    
+    JSON Structure:
     {{
         "topic": "Overall Topic",
         "questions": [
@@ -87,17 +91,25 @@ def generate_quiz_from_pdf(file_path: str, num_questions: int = 5, topic: str = 
         ]
     }}
 
-    TEXT:
+    TEXT CONTENT:
     {text}
     """
 
-    print(f"⏳ Generating with {model_name}...")
+    print(f"⏳ Generating {num_questions} questions with {model_name}...")
     try:
         response = model.generate_content(prompt)
         clean_text = response.text.strip()
+        # Clean up markdown if present
         if clean_text.startswith("```json"): clean_text = clean_text[7:]
         if clean_text.endswith("```"): clean_text = clean_text[:-3]
-        return json.loads(clean_text)
+        
+        data = json.loads(clean_text)
+        
+        # Double check the count
+        actual_count = len(data.get('questions', []))
+        print(f"✅ AI Generated {actual_count} questions.")
+        
+        return data
     except Exception as e:
         print(f"❌ Generation Error: {e}")
         return None
